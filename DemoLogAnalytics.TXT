@@ -1,0 +1,47 @@
+https://portal.loganalytics.io/demo#/
+
+//Demo n°1 : Identifier la souscription qui génère le plus de messages
+union withsource = tt * 
+| where _IsBillable == true 
+| parse tolower(_ResourceId) with "/subscriptions/" subscriptionId "/resourcegroups/" 
+    resourceGroup "/providers/" provider "/" resourceType "/" resourceName   
+| summarize Bytes=sum(_BilledSize) by subscriptionId | sort by Bytes nulls last
+
+//Demo n°2 : Identifier la volumétrie des messages facturés par solution utilisée 
+union withsource = tt *
+| where _IsBillable == true
+| summarize MBytes=round(sum(_BilledSize/1024/1024),2)  by  Solution=tt  , _IsBillable
+| sort by MBytes nulls last
+
+//Demo n°3 : Identifier la volumétrie des messages facturés par solution sur un mois
+let daystoSearch = 31d;
+union withsource = tt *
+| where TimeGenerated > ago(daystoSearch)
+| where _IsBillable == True
+| summarize
+    RecordCount=count(),
+    MbperRecord = round(sum(_BilledSize / 1024 / 1024) / count(), 4) ,
+    TotalMBytes= round(sum(_BilledSize/1024/1024),4)
+    by SolutionName = tt
+| sort by SolutionName asc
+
+
+// Demo n°4 : Mise en évidence par rapport aux autres et évolution sur les 31 derniers jours
+Usage | where TimeGenerated > startofday(ago(31d))| where IsBillable == true
+| summarize TotalVolumeGB = sum(Quantity) / 1024 by bin(TimeGenerated, 1d), Solution
+| render barchart
+
+// Demo n°5 : Identifier la répartition des messages en fonction de la source
+union withsource = tt * 
+| where _IsBillable == true 
+| extend computerName = tolower(tostring(split(Computer, '.')[0]))
+| where computerName != ""
+| summarize TotalVolumeBytes=sum(_BilledSize) by computerName
+
+// Demo n°6 : se projeter et evaluer la volumétrie de données ingérées
+Usage
+| where TimeGenerated > startofday(ago(31d))
+| where IsBillable == true
+| summarize IngestedGB = sum(Quantity) / 1024 by Solution
+| sort by IngestedGB desc
+| render barchart
